@@ -1,0 +1,718 @@
+find action
+-delete					검색결과삭제
+-exec [명령어] \;		검색 결과를 지정한 명령어로 처리
+-exec [명령어] {} \;	검색 결과를 차례대로 매칭하면서 지정된 명령어 실행
+
+#mkdir -p /practice/find_test1
+#cd /practice/find_test1
+#touch test{01..10}								//테스트파일생성
+#find . -type f -name "test*" -delete			//이름이 test로 시작하는 파일 삭제
+#touch file{1..3}
+#find . -empty -exec ls -l \; 	//결과에 하나씩 ls -l 실행
+-> ls -l
+-> ls -l
+-> ls -l
+#find . -empty -exec ls -l {} \;
+-> ls -l file1
+-> ls -l file2
+-> ls -l file3
+#cd /practice/find_test
+#find -name "0??1" -exec gzip {} \;
+gzip [0??1] 
+-----------------------------------------------------------------------------------
+#mkdir /practice/xargs_test
+#cd /practice/xargs_test
+#vi xargs_test.sh
+
+#!/bin/bash
+for z in $(seq 0 10); do
+	fallocate -l 10K "$RANDOM.txt"
+done
+for z in $(seq 0 10); do
+	fallocate -l 15K "$RANDOM.txt"
+done
+for z in $(seq 0 10); do
+	fallocate -l 20K "$RANDOM.txt"
+done
+
+#sh xargs_test.sh
+
+1. find를 쓰지 않고 크기가 10KB인 파일명만 출력하고, 이름의 숫자가 작은순으로 정렬
+-> #ll -h | grep 10K | cut -d " " -f 8 | sort -n
+
+2. find를 사용하여 크기가 10KB 파일을 출력하고 파일의 이름만 정렬
+-> #find . -size 10K | cut -d "/" -f 2 | sort -n
+
+3. find를 사용하여 크기가 10KB 파일을 삭제. 단, -delete 옵션 사용 금지
+->#find . -size 10k -exec rm {} \;
+
+xargs (eXtended Arguments)
+- 표준 출력 값(파일이름)을 이용하여 명령을 실행
+- find와 사용 시 결과물을 다음 명령어에 인자로 전달하는 역할
+- 여러 명령어와 함께 조합하여 사용할 수 있다.
+
+-i 인자로 문자열을 전달
+-t 상세한 정보 출력
+
+4. find를 사용하지 않고 크기가 20K 파일을 삭제
+#ll -h | grep 20K | cut " " -f 8 | xargs rm 
+
+현재 위치한 디렉토리에서 일반파일 검색결과에
+크기를 확인해서 가장크기가 큰 파일을 출력
+
+#find . -type f | xargs du -s | sort -n | tail -1
+
+#cd /practice/find_test
+#gunzip ./0*1.gz 
+
+1. 현재 디렉토리에 위치한 모든 파일의 이름뒤에 확장 .perm 을붙이기
+   이름 변경 ex) 1111 -> 1111.perm
+             ex) 1234 -> 1234.perm
+#ls | xargs -t -i mv {1234} {1234}.perm 
+1234.perm                   
+
+
+2. 원상복구
+ex) 1111.perm -> 1111
+ex) 1234.perm -> 1234
+
+ls | cut -d "." -f 1 | xargs -t -i {}.perm {}
+ls -> 1111.perm
+cut -> 1111
+1111 -> {} 
+mv {1111}.perm {1111}
+
+#cd /root
+#ls
+anaconda-ks.cfg
+#cat anaconda-ks.cfg			// 파일내용안에 repo 문자열 확인
+
+find /root -type f | xargs grep "repo" [출력결과]
+
+디렉토리아래 파일 1000개 -> 1000개 전부 삭제
+#rm -rf ./*
+too many arguments
+
+rm -rf ./0000 00001 00002 ..... 7777
+0000 ~ 7777
+
+ls | grep anaconda-ks
+anaconda-ks.cfg
+rm 0000	
+rm 0001
+rm 0002
+
+---------------------------------------------------------------------------
+부팅프로세스
+yum
+rpm
+
+LVM(Logical Volume Manger)
+- Disk 파티션을 효율적으로 관리하고 사용할 있는 방식
+- LVM2 (Device Mapper)를 이용
+
+PV (Physical Volume, 물리 볼륨)
+- /dev/sdb1 /dev/sdc1 같은 실제 하드디스크의 파티션의미
+
+VG (Volume Group, 볼륨 그룹)
+- 여러개의 PV를 그룹을 묶은 것을 뜻한다.
+- 예를들어 /dev/sdb1, /dev/sdc1가 GROUP1이라는 그룹을 만들때
+  GROUP1을 VG라고 한다.
+
+LV (Logical Volume, 논리 볼륨)
+- VG를 다시 적절한 크기의 파티션을 나눌때 각 파티션을 LV라고한다.
+
+PE/LE (Physical/Logical extent)
+- PV와 LV가 가진 일정학 크기의 블록을 의미
+LVM 구성
+0. VMware Disk 추가 및 Reboot
+	Disk 1GB * 3EA	추가 후에 리부팅(#reboot) 진행
+
+1. LVM 패키지 설치	
+#yum -y install lvm2
+	
+2. fdisk 이용하여 파티션 생성 (/dev/sdb /dev/sdc /dev/sdd)
+#fdisk -l								// 추가 Disk 확인
+#fdisk /dev/sdb
+	n	add a new partition 			// 새로운 파티션 생성
+	p	primary partition				// 주파티션 선택
+		Partition number	1			// 파티션 번호 1
+		First cylinder 		'enter'		// 처음 실리더 부터
+		Last cylinder		'enter'		// 마지막 실린더까지 모두 사용
+	t	change a partition's system id	// 파티션 타입 지정
+	8e	Linux LVM						// LVM 선택
+	p	print the parttion table		// 설정 내용 확인
+	w	write table to disk and exit	// 저장 후 종료
+
+#fdisk -l
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdb1               1         130     1044193+  8e  Linux LVM
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdc1               1         130     1044193+  8e  Linux LVM
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdd1               1         130     1044193+  8e  Linux LVM
+
+3. PV ( Physical Volume ) 생성
+#pvcreate [장치명]
+#pvcreate /dev/sdb1									//PV 생성
+#pvcreate /dev/sdc1
+#pvcreate /dev/sdd1 
+
+Physical volume "[장치명]" successfully created	//메세지 확인
+
+4. VG ( Volume Group ) 생성
+#vgcreate [볼륨그룹명] [PV장치명] [PV장치명] ... [PV장치명]
+#vgcreate PracticeVG /dev/sdb1 /dev/sdc1 /dev/sdd1			// 볼륨 그룹 생성
+Volume group "PracticeVG" successfully created				// 메세지 확인
+#vgchange -a y PracticeVG									// 볼륨 그룹 활성화
+활성화 -a : active y : yes 비활성화 -a : active n : no 	
+0 logical volume(s) in volume group "PracticeVG" now active	// 활성화 확인
+
+5. VG 구성 확인
+#vgdisplay [볼륨 그룹명]
+#vgdisplay PracticeVG										// PracticeVG 볼륨 그룹 확인
+#vgdisplay													// 전체 볼륨 그룹 확인 
+  --- Volume group ---
+  VG Name               PracticeVG							// VG이름
+  Cur PV                3									// 해당 VG에 PV개수
+  Act PV                3									// 활성된 PV 개	수
+  VG Size               2.98 GiB							// VG의 총크기
+  PE Size               4.00 MiB							// PE의 4MB
+  Total PE              762									// 총 PE 개수 
+  Alloc PE / Size       0 / 0   							// 할당된 PE개수/ 크기
+  Free  PE / Size       762 / 2.98 GiB						// 여유 PE 개수 / 크기 
+
+6. VG(Volume Group) 파티션 LV (Logical Volume) 생성
+#lvcreate --size [크기] --name [LV이름] [VG이름]
+#lvcreate --size 500M --name PracticeLV1 PracticeVG
+#lvcreate --size 1.5GB --name PracticeLV2 PracticeVG
+#lvcreate --extents 100%FREE --name PracticeLV3 PracticeVG	//나머지(FREE)용량 모두(100%)할당  
+Logical volume "[LV이름]" created.							//생성 메세지 확인
+#lvdisplay													//시스템 전체 LV정보
+#lvdisplay [LV경로]				
+#lvdisplay /dev/PracticeVG/PracticeLV1
+  LV Path                /dev/PracticeVG/PracticeLV1		// 경로
+  LV Name                PracticeLV1						// LV이름
+  LV Size                500.00 MiB							// LV크기
+  Current LE             125								// LV에 할당된 LE 개수
+
+7. File System 생성 및 마운트
+#mkfs -t ext4 /dev/PracticeVG/PracticeLV1
+#mkfs -t ext4 /dev/PracticeVG/PracticeLV2					// 파일시스템 생성
+#mkfs -t ext4 /dev/PracticeVG/PracticeLV3
+
+#mkdir /LV-{1,2,3}
+#mount /dev/PracticeVG/PracticeLV1 /LV-1					// 마운트
+#mount /dev/PracticeVG/PracticeLV2 /LV-2
+#mount /dev/PracticeVG/PracticeLV3 /LV-3  
+  
+#df -h														// 마운트 확인
+
+8. fstab 수정
+#blkid														//LV UUID 확인
+#vi /etc/fstab												//UUID 형태로 마운트 정보 입력
+UUID=35be76dc-2e83-42ae-b532-7055c5dfa601 /LV-1 ext4 defaults 0 0
+UUID=affce5d3-cd72-460d-9e35-5cb1caa55a79 /LV-2 ext4 defaults 0 0
+UUID=052fa70b-1fc8-4ffb-ab58-5ff333c03cd0 /LV-3 ext4 defaults 0 0
+#reboot
+  
+실습 1G Disk 2개추가 -> 파티션 생성 후, 4개의 LV 생성.
+	 볼륨 그룹명, 논리 볼륨명 자유
+	 각각 /LV4 ~ /LV7 까지 마운트 (용량 자유, 단 남는 공간없이 전부 할당)
+
+----------------------------------------------------------------------------------------------------
+LV ( Logical Volume ) 삭제 및 용량 추가
+
+#umount /LV-3									//언마운트
+#lvchange -an /dev/PracticeVG/PracticeLV3		//LV 비활성화
+#lvremove /dev/PracticeVG/PracticeLV3			//LV 제거
+#lvdisplay										//LV1, LV2 출력 확인
+#vgdisplay										
+  Total PE              762						
+  Alloc PE / Size       509 / 1.99 GiB			//할당된 PE 509 / 용량은 1.99기가 할당
+  Free  PE / Size       253 / 1012.00 MiB		//여유 PE 253개 / 용량은 1기가 여유
+
+#lvextend --size +512M /dev/PracticeVG/PracticeLV2			// LV2에 512메가 용량 추가
+
+LV2 changed from 1.50 GiB (384 extents) to 2.00 GiB (512 extents).
+  Logical volume PracticeLV2 successfully resized.
+
+#lvcreate --extents 100%FREE --name PracticeLV3 PracticeVG
+#mkfs -t ext4 /dev/PracticeVG/PracticeLV3
+#mount /dev/PracticeVG/PracticeLV3 /LV-3  
+#df -h
+PracticeLV1		477M  2.3M  449M   1% /LV-1
+PracticeLV2		1.5G  2.3M  1.4G   1% /LV-2	<-- 1.5G + 512M 
+PracticeLV3		477M  2.3M  449M   1% /LV-3	<-- 용량 감소 확인 
+#resize2fs /dev/PracticeVG/PracticeLV2
+#df -h
+PracticeLV2		2.0G  2.3M  1.9G   1% /LV-2
+
+#vi /etc/fstab
+지금까지 UUID형태로 입력한 마운트정보를 모두 주석처리
+
+
+VG에 용량 추가 후 LV용량 추가
+1G Disk 추가 재부팅
+#fdisk /dev/sdg									// 8e 타입 변경
+#vgdisplay PracticeVG							// VG 정보 확인
+	 VG Size               2.98 GiB				// VG 크기
+#pvcreate /dev/sdg1								// PV 생성
+#vgextend PracticeVG /dev/sdg1					// 기존VG에 PV(/dev/sdg1)추가
+ Volume group "PracticeVG" successfully extended
+#vgdisplay PracticeVG		
+    VG Size               3.97 GiB				// VG 용량 증설 확인
+
+
+#vgdisplay PracticeVG	
+  VG Size               3.97 GiB				// VG 크기
+  PE Size               4.00 MiB				// PE 크기
+  Total PE              1016					// 총 PE 개수
+  Alloc PE / Size       762 / 2.98 GiB			// 할당된 PE 개수 / 용량 
+  Free  PE / Size       254 / 1016.00 MiB		// 여유 PE 개수 / 용량
+
+#lvextend --size 1016MB /dev/PracticeVG/PracticeLV1	
+#lvextend --extents 254 /dev/PracticeVG/PracticeLV1	
+#lvextend --extents 100%FREE /dev/PracticeVG/PracticeLV1
+
+#lvextend --size +500MB /dev/PracticeVG/PracticeLV1	
+#lvextend --extents +125 /dev/PracticeVG/PracticeLV1	
+vgdisplay PracticeVG
+Free  PE / Size       0 / 0 
+#resize2fs /dev/PracticeVG/PracticeLV1
+#mount /dev/PracticeVG/PracticeLV1	/LV-1
+#df -h 														//용량 확인
+
+
+#e2fsck -f /dev/PracticeVG/PracticeLV1	
+#resize2fs /dev/PracticeVG/PracticeLV1	
+#mount /dev/PracticeVG/PracticeLV1	/LV-1
+#df -h  ??? 1.5GB
+
+
+		// 파일 시스템 크기 변경 적용
+
+기존 FS크기 (500MB) -> 현재 저장공간의 크기만큼 변경한다
+
+LV 용량 축소
+
+#umount /LV-1						    // 언마운트 필수
+#e2fsck -f /dev/PracticeVG/PracticeLV1	// 용량 축소하기전에 파일 시스템을 점검
+#resize2fs -f /dev/PracticeVG/PracticeLV1 [축소 후 FS크기]
+#resize2fs -f /dev/PracticeVG/PracticeLV1 492M				// 파일 시스템 크기 축소
+
+#lvreduce --size -1GB /dev/PracticeVG/PracticeLV1
+1.48 GiB - 1.0GiB = 492.00 MiB
+
+FS 	 492M
+DISK 492M
+
+Size of logical volume PracticeVG/PracticeLV1 changed from 1.48 GiB (379 extents) to 492.00 MiB (123 extents).
+Logical volume PracticeLV1 successfully resized.
+
+#lvdisplay
+	LV Size                492.00 MiB
+#mount /dev/PracticeVG/PracticeLV1 /LV-1
+#df -h --> 용량 492M
+#vgdisplay
+	Free  PE / Size       256 / 1.00 GiB
+
+	
+----------------------------------------------------------------------------------------------------
+리눅스 부팅 프로세스
+1. Power ON & ROM BIOS
+	- 전원이 들어오면 CPU가 ROM(Read Only Memory)에 저장된 BIOS(Basic Input Ouput System)
+	  실행
+	- BIOS는 POST (Power On Self Test/자체 진단 기능)을 수행하며 하드웨어 장치들을
+	  하나씩 인식하면 이상 유무 확인
+	- 부팅 할 디스크를 선택하여 부팅 디스크의 첫 번째 (Boot Sector)의
+	  부트로더를 실행한다.
+2. 부트로더 실행 (GRUB)
+	- 부트로더의 종류 2가지
+		LILO : 오래된 리눅스에사용하는 부트로더
+		GRUB : 최신 리눅스에서 사용하는 부트로더
+	- GRUB가 실행되면, 부팅메뉴를 출력하고 커널이미지와
+	  init 프로세스를 실행하다.
+3. init 프로세스 (PID=1)
+	- /etc/inittab 파일참조하여 설정된 runlevel 실행
+	#vi /etc/initab
+	
+	id:[숫자]:initdefault:
+		 3->5
+	#init 6
+	runlevel - 시스템을 어떤 방식으로 부팅할 것인가를 분류해놓은 것.
+	0 - 시스템 종료
+	1 - 싱글유저모드 (응급복구,안전모드)
+		- root 패스워드 분실 시 
+		
+	2 - 네트워크기능이 없는 다중사용자모드
+	3 - 모든 네트워크 기능을 지원하느 다중 사용자모드
+		- 99.9% 서버가 사용하는 런레벨
+		- CLI (Command Line Interface, TUI Text User Interface)
+	4 - 사용되지 않음 (UNUSED)
+	5 - X-window
+		- 리눅스에서 지원하는 GUI환경
+		- 그래픽 환경 (GNOME, KDE)
+	6 - 시스템 재부팅
+	
+	부팅 레벨이 결정되면 /etc/rc.d/rc.sysinit 스크립트 실행한다.
+	 - 네트워크 설정, 스왑메모리, 호스트네임, 시스템시간, 폰트 등등..
+	해당 런레벨에맞는 /etc/rc.d/rc[숫자].d/* 스크립트를 실행
+	런레벨3 -> /etc/rc.d/rc3.d/* 모든 스크립트
+	런레벨5 -> /etc/rc.d/rc5.d/* 모든 스크립트
+	
+	K로 시작하는 파일은 부팅 시 실행도지 않는 스크립트 파일 (KILL)
+	S로 시작하는 파일은 부팅 시 실행되는 스크립트 파일 (START)
+	K, S 뒤에 오는 숫자 값은 파일들이 실행될 순서를 의미 (우선순위)
+	
+	S99local -> 2,3,4,5
+	/etc/rc.d/rc.local 파일을 링크한 파일
+	
+	/etc/rc.d/rc.local 파일은 각 사용자들이 부팅시에 자동으로 실행하고자 하는
+	프로그램을 설정하거나 스크립트를 설정해두는 파일이다.
+
+로그인 프롬프트
+	
+시스템 초기화 및 관리 프로세스
+과거 : System V init (init -> inittab -> rc.sysinit)
+현재 : System V init + Upstart ( init -> rcS.conf -> rc.conf -> rc.local )
+미래 : systemd (CetnOS 7.0 이상의버전 리눅스커널 3.X 커널이 사용하는 방식)
+---------------------------------------------------------------------------------------------------
+chkconfig - 서비스 데몬(스크립트 파일)의 실행 레벨 정보를 관리해주는 프로그램
+		  - 서비스를 제공하기위해서 만든 스크립트 -> 데몬
+		  데몬 -> 커널상에 백그라운드 모드로 동작하고 있으며, 외부에 요청에의해
+		          동작하는 프로세스
+
+#chkconfig --list					// 시스템상에 모든 데몬을 확인
+#chkconfig --list [데몬명]
+#chkconfig --level [런레벨] [데몬명] [on|off]
+#chkconfig --level 3 sshd off
+sshd           	0:해제	1:해제	2:활성	3:활성	4:활성	5:활성	6:해제		
+#chkconfig --list sshd
+sshd           	0:해제	1:해제	2:활성	3:해제	4:활성	5:활성	6:해제							     
+
+cd /etc/rc.d
+ 	   
+service [데몬이름] [start | stop | restart | status ]
+
+service sshd start 				// 데몬 실행
+service sshd stop 				// 데몬 중지
+service sshd restart			// 데몬 재시작
+service sshd status				// 데몬 현재 확인
+
+#service sshd status			// sshd 데몬 상태 확인
+#service sshd start				// sshd 데몬 시작
+-> [ OK ]
+
+service network restart			// 네트워크 관리하는 데몬을 재시작
+								// 설정파일을 수정하고 적용을 위해서
+								   데몬을 재시작
+
+서버 < --- > 클라이언트
+
+IP주소
+MAC주소
+PORT번호
+소켓
+TCP
+UDP
+라우터
+스위치
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+								   
+								   
+								   
+								   
+								   
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+
+
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	  
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
